@@ -1,0 +1,110 @@
+# 1. Import Required Libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics.pairwise import cosine_similarity
+import random
+# 2. Load Netflix Dataset
+print("Loading Netflix data...")
+netflix_df = pd.read_csv("netflix_titles.csv")
+netflix_df = netflix_df[['title']].dropna().drop_duplicates().reset_index(drop=True)
+
+# Limit to 100 movies to simplify the simulation
+movie_list = netflix_df.head(100)['title'].tolist()
+# 3. Simulate User Ratings
+print("Simulating user ratings...")
+np.random.seed(42)
+user_ids = [f"user_{i}" for i in range(1, 21)]  # 20 users
+
+ratings_data = []
+for user in user_ids:
+    watched_movies = random.sample(movie_list, k=random.randint(10, 25))
+    for movie in watched_movies:
+        rating = np.random.randint(1, 6)
+        ratings_data.append({'userId': user, 'title': movie, 'rating': rating})
+ratings_df = pd.DataFrame(ratings_data)
+# 4. Exploratory Data Analysis
+print("\nSample of Ratings Data:")
+print(ratings_df.head())
+
+print("\nRating distribution:")
+print(ratings_df['rating'].value_counts().sort_index())
+
+plt.figure(figsize=(8, 4))
+sns.countplot(data=ratings_df, x='rating', palette='Set2')
+plt.title("Rating Distribution")
+plt.xlabel("Rating")
+plt.ylabel("Frequency")
+plt.show()
+
+user_rating_counts = ratings_df.groupby('userId')['rating'].count()
+plt.figure(figsize=(8, 4))
+sns.histplot(user_rating_counts, bins=10, kde=True)
+plt.title("Number of Movies Rated per User")
+plt.xlabel("Number of Ratings")
+plt.ylabel("Count of Users")
+plt.show()
+# 5. Create User-Movie Matrix
+print("\nCreating user-movie matrix...")
+user_movie_matrix = ratings_df.pivot_table(index='userId', columns='title', values='rating').fillna(0)
+
+# 6. Compute Cosine Similarity
+print("Calculating cosine similarity...")
+user_similarity = cosine_similarity(user_movie_matrix)
+user_similarity_df = pd.DataFrame(user_similarity, index=user_movie_matrix.index, columns=user_movie_matrix.index)
+# 7. Recommend Movies Function
+def recommend_movies(user_id, num_recommendations=5):
+    """
+    Recommend top-N movies to a user based on similar users using cosine similarity.
+    """
+    if user_id not in user_movie_matrix.index:
+        return ["User not found."], None
+
+    # Get similar users (excluding self)
+    similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:]
+
+    weighted_ratings = pd.Series(dtype=float)
+    for other_user, sim_score in similar_users.items():
+        other_user_ratings = user_movie_matrix.loc[other_user]
+        weighted_ratings = weighted_ratings.add(other_user_ratings * sim_score, fill_value=0)
+
+    # Exclude already rated movies
+    rated_movies = user_movie_matrix.loc[user_id]
+    unrated_movies = rated_movies[rated_movies == 0].index
+    weighted_ratings = weighted_ratings[unrated_movies]
+
+    # Get top N recommendations
+    recommendations = weighted_ratings.sort_values(ascending=False).head(num_recommendations)
+    return recommendations.index.tolist(), recommendations
+
+# 8. Show Sample Recommendations
+user_input = 'user_5'
+print(f"\nTop 5 movie recommendations for {user_input}:")
+recommendations, scores = recommend_movies(user_input, 5)
+
+if scores is not None:
+    for i, movie in enumerate(recommendations, 1):
+        print(f"{i}. {movie}")
+
+    # Visualize the top recommendations
+    plt.figure(figsize=(8, 4))
+    sns.barplot(x=scores.loc[recommendations].values, y=scores.loc[recommendations].index, palette="viridis")
+    plt.title(f"Top 5 Recommendations for {user_input}")
+    plt.xlabel("Score")
+    plt.ylabel("Movie Title")
+    plt.show()
+# 9. Save Simulated Ratings
+ratings_df.to_csv("simulated_user_ratings.csv", index=False)
+print("\nSimulated user ratings saved to 'simulated_user_ratings.csv'")
+
+# 10. Summary of Model
+print("\nModel Summary:")
+print("Algorithm: User-Based Collaborative Filtering")
+print("Similarity Metric: Cosine Similarity")
+print(f"Users: {len(user_ids)}, Movies: {len(movie_list)}")
+print("Recommendation generation complete.")
+14. Future scope 
+Add movie metadata (genre, release year) for hybrid recommendations 
+Improve prediction accuracy using Matrix Factorization (SVD) 
+Incorporate user feedback loop to dynamically adjust recommendations 
